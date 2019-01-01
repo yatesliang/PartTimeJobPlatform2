@@ -94,6 +94,7 @@ def register():
         abort(403, u"Role 必须为 0 或 1")
 
     userindex = UserController.create_userindex(username, password, role)
+    user = UserController.create_user2(userindex)
     token = UserController.generate_token(username)
     return return_data(None, {'token': token, 'detail': False},
                        msg="register success for %s" % userindex.Username)
@@ -139,8 +140,14 @@ def finish_userdetail_info(userindex):
     else:
         abort(400, "role error!")
 
-    user = UserController.create_user(userindex)
-    return return_data(None, data=user.dump_to_dict())
+    userindex.save()
+    print(userindex.dump_to_dict())
+    # user = UserController.create_user(userindex)
+    # return return_data(None, data=user.dump_to_dict())
+    u = UserController.get_user_byuserid(userindex.UserID)
+    u.userindex = userindex
+    d = UserController.wrapper_userinfo2(u)
+    return return_data(None, data=d)
 
 
 # @app.route('/user/modify', methods=['GET', 'POST'])
@@ -163,13 +170,15 @@ def userinfo(userindex):
     # data = get_data_from_ajax()
     # if data is None:
     #     return
-    u = User.from_blockchain(userindex.UserID)
+    # u = User.from_blockchain(userindex.UserID)
+    u = UserController.get_user_byuserid(userindex.UserID)
+    u.userindex = userindex
     if u is None:
         abort(403, u"用户不存在于区块链记录中或访问区块链失败")
-    u.UserInfo.CurrentCreditScore = u.CreditScore.CurrentCreditScore
-    u.UserInfo.TotalCreditScore = u.CreditScore.TotalCreditScore
-    u.UserInfo.RateCount = u.CreditScore.Ratetimes
-    u.UserInfo.save()
+    # u.UserInfo.CurrentCreditScore = u.CreditScore.CurrentCreditScore
+    # u.UserInfo.TotalCreditScore = u.CreditScore.TotalCreditScore
+    # u.UserInfo.RateCount = u.CreditScore.Ratetimes
+    # u.UserInfo.save()
     d = UserController.wrapper_userinfo(u)
 
     # return return_data(None, data=u.dump_to_dict())

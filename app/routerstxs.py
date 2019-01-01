@@ -3,7 +3,7 @@
 from . import app
 from .routersutil import *
 from app.modules import Tx, UserRole
-from app.controllers import TxController, JobController
+from app.controllers import TxController, JobController, UserController
 
 
 @app.route('/tx/apply', methods=['GET', 'POST'])
@@ -23,20 +23,44 @@ def student_apply(userindex):
             return return_data(data=tx.dump_to_dict())
 
     tx = TxController.create_tx(userindex.UserID, JobID)
+
+    # tx.save()
     # add tx status re-get
-    new_tx = Tx.from_blockchain(unicode(tx.id))
-    if new_tx is None:
-        abort(403, u"创建 %s 没有成功" % tx.id)
-    new_tx.save()
+    # new_tx = Tx.from_blockchain(unicode(tx.id))
+    # if new_tx is None:
+    #     abort(403, u"创建 %s 没有成功" % tx.id)
+    # new_tx.save()
 
     job = JobController.get_job_by_jobid(jobid=JobID)
     if job is not None:
         job.TotalApplied += 1
+        job.Txs.append(tx)
+
+        # 自动审核通过
+        if userindex.CurrentCreditScore > 8:
+            tx.Status = u"已通过"
+            print("当前信用分数：")
+            print(userindex.CurrentCreditScore)
+            job.TotalHired += 1
+        else:  # 自动审核未通过
+            tx.Status = u"未通过"
+            job.TotalWaitCheck += 1
+
         job.save()
-        userindex.JobTxMap[JobID] = unicode(new_tx.id)  # {jobid: txid}
+        tx.save()
+        userindex.JobTxMap[JobID] = unicode(tx.id)  # {jobid: txid}
+
+        print "job dump to dict"
+        print job.dump_to_dict()
+        print "user job tx map"
+        print userindex.JobTxMap
         userindex.save()
 
-    return return_data(data=new_tx.dump_to_dict())
+        u = UserController.get_user_byuserid(userindex.UserID)
+        u.JobIDs.append(unicode(job.id))  # 注意这个 待会测一下
+        u.save()
+
+    return return_data(data=tx.dump_to_dict())
 
 
 @app.route('/tx/student/jobs', methods=['GET', 'POST'])
@@ -82,7 +106,8 @@ def tx_query():
     if txid is None:
         abort(400, u"缺少 TxID")
 
-    tx = Tx.from_blockchain(txid)
+    # tx = Tx.from_blockchain(txid)
+    tx = TxController.get_tx_by_txid(txid)
     if tx is None:
         abort(403, u"没有查找到对应JobID: %s 的兼职信息" % txid)
     tx.save()
@@ -108,10 +133,22 @@ def agency_check(userindex):
     result = unicode(result)
     if result not in [u"1", u"2"]:
         abort(403, u"result only can be: 1 or 2")
-    tx.bc_artificial_check(result)
+    # tx.bc_artificial_check(result)
     # lookup
-    tx = Tx.from_blockchain(txid)
+    # tx = Tx.from_blockchain(txid)
+    job = JobController.get_job_by_jobid(tx.JobID)
+    if result == u"1":
+        job.TotalHired += 1
+        job.TotalWaitCheck -= 1
+        tx.Status = u"已通过"
+
+    else:
+        tx.Status = u"未通过"
+        job.TotalWaitCheck -= 1
+
+    job.save()
     tx.save()
+
     return return_data(data=tx.dump_to_dict())
 
 
@@ -138,9 +175,30 @@ def evaluate(userindex):
     if tx is None:
         abort(403, u"提供的tx: %s 不存在" % txid)
 
-    tx.bc_evaluate(userid, score)
+    # tx.bc_evaluate(userid, score)
     # return tx state
     # lookup
-    tx = Tx.from_blockchain(txid)
-    tx.save()
+    # tx = Tx.from_blockchain(txid)
+    userindex.TotalCreditScore += score
+    userindex.RateCount += 1
+    userindex.CurrentCreditScore = int(userindex.TotalCreditScore / userindex.RateCount)
+    userindex.save()
+
+    # 只结算一次钱
+    if tx.Status != u"已结算":
+        user = UserController.get_user_byuserid(userindex.UserID)
+        job = JobController.get_job_by_jobid(tx.JobID)
+        salary = int(job.JobDetail.Salary)
+        if userindex.Role == 0:  # user is student
+            user.Balance += salary
+            # get the agency
+            agency = UserController.get_user_byuserid(job.UserID)
+            agency.Balance -= salary
+        else:  # user is agency
+            user.Balance -= salary
+            # get the student
+            st = UserController.get_user_byuserid(tx.UserID)
+            st.Balance += salary
+        tx.Status = u"已结算"
+        tx.save()
     return return_data(data=tx.dump_to_dict())

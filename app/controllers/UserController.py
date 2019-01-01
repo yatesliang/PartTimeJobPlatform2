@@ -7,7 +7,7 @@ from wtforms import StringField, PasswordField, validators
 from wtforms.validators import DataRequired
 
 from app.db import redisdb
-from app.modules import UserIndex, User, UserRole, JobInfo, Tx
+from app.modules import UserIndex, User, UserRole, JobInfo, Tx, User2
 from app.utils import util, hashutil
 
 
@@ -50,6 +50,14 @@ def get_username_bytoken(token):
 # query
 def get_userindex(**argv):
     return UserIndex.objects.filter(**argv).first()  # return None
+
+
+def get_user(**argv):
+    return User2.objects.filter(**argv).first()  # return None
+
+
+def get_user_byuserid(userid):
+    return get_user(UserID=userid)
 
 
 def get_userindex_all(**argv):
@@ -97,10 +105,45 @@ def wrapper_userinfo(u):
     return d
 
 
+def wrapper_userinfo2(u):
+    d = u.dump_to_dict()
+
+    ids = d["JobIDs"]
+    l = list()
+
+    userindex = get_userindex_byuserid(u.UserID)
+
+    if userindex.Role == UserRole.Student:
+        for i in ids:
+            tx = Tx.objects.filter(id=i).first()
+            if tx is not None:
+                l.append(tx.dump_to_dict())
+    elif userindex.Role == UserRole.Agency:
+        for i in ids:
+            job = JobInfo.objects.filter(id=i).first()
+            if job is not None:
+                l.append(job.dump_to_dict())
+    d["Jobs"] = l
+    d["UserInfo"]["UserID"] = d["UserInfo"]["IDNo"]
+    return d
+
+
 # create
 def create_userindex(username, password, role):
     u = UserIndex(Username=username, Password=password, Role=role)
     u.save()
+    return u
+
+
+def create_user2(userindex):
+    userindex.UserID = unicode(uuid.uuid4())
+    userindex.save()
+    u = User2(UserID=userindex.UserID, Balance=0, JobIDs=[])
+    u.save()
+
+    print("---to_mongo----")
+
+    print(u.to_mongo())
     return u
 
 
@@ -130,15 +173,19 @@ def create_user(userindex):
 
     # create to blockchain
     user.bc_create()
+    user.save()
     return user
 
 
 def update_user_balance(userid, balance):
-    user = User.from_blockchain(userid)
-    if user is None:
-        abort(403, "提供的用户未在记录当中")
+    # user = User.from_blockchain(userid)
+    # if user is None:
+    #     abort(403, "提供的用户未在记录当中")
+    # user.Balance = balance
+    # user.bc_update()
+    user = get_user(userid)
     user.Balance = balance
-    user.bc_update()
+    user.save()
     return user
 
 

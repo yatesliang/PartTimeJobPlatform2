@@ -77,6 +77,11 @@ def publish_job(userindex):
     job = JobController.create_jobinfo(userindex, title, jobtime, place, salary, day, demand)
     userindex.JobTxMap[unicode(job.id)] = ""
     userindex.save()
+
+    u = UserController.get_user_byuserid(userindex.UserID)
+    u.JobIDs.append(unicode(job.id))  # 注意这个 待会测一下
+    u.save()
+
     return return_data(data=job.dump_to_dict())
 
 
@@ -106,11 +111,13 @@ def get_agency_jobs(userindex):
     for jobid in userindex.JobTxMap.keys():
         job = JobController.get_job_by_jobid(jobid)
         if job is not None:
+            print "job get"
             d = job.dump_to_dict()
             if state is not None:
                 tx_list = list()
                 txs = d["Txs"]
                 for t in txs:
+                    print "get One"
                     if t['State'] == state:
                         tx_list.append(t)
                 tx_list.sort(key=lambda x: x["Time"], reverse=True)
@@ -118,6 +125,8 @@ def get_agency_jobs(userindex):
 
             l.append(d)
     l.sort(key=lambda x: x["Time"], reverse=True)
+    print "Total apply:\n"
+    print l
     return return_data(data=l)
 
 
@@ -129,7 +138,8 @@ def job_query():
     if jobid is None:
         abort(400, "缺少 JobID")
 
-    job = JobInfo.from_blockchain(jobid)
+    # job = JobInfo.from_blockchain(jobid)
+    job = JobController.get_job_by_jobid(jobid)
     if job is None:
         abort(403, u"没有查找到对应JobID: %s 的兼职信息" % jobid)
     # print type(job.id)

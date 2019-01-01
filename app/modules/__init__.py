@@ -311,6 +311,23 @@ class User(BaseModule, BlockChainUserInfoMixIn):
         return [self.UserInfo.UserID, self.dump_to_json(True)]
 
 
+class User2(db.Document, BaseModule):
+    UserID = db.StringField()
+    Balance = db.IntField()
+    JobIDs = db.ListField(db.StringField(), default=[])
+
+    def dump_to_dict(self, to_blockchain=False):
+        d = self.to_mongo()
+        d.pop("_id", None)  # _id belong to mongodb
+        d.pop("BCID", None)
+        d["UserInfo"] = self.userindex.dump_to_dict(to_blockchain)
+        if to_blockchain:
+            for k, v in d.iteritems():
+                d[k] = unicode(v)
+
+        return d
+
+
 class Tx(db.Document, BaseModule, BlockChainTxMixIn):
     JobID = db.StringField()
     UserID = db.StringField()
